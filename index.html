@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Porra LaLiga</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body {
+      max-width: 100vw;
+      overflow-x: hidden;
+      background-color: #0b1120;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center overflow-x-hidden">
+  <div id="app" class="w-full max-w-md min-h-screen bg-slate-950 flex flex-col overflow-x-hidden shadow-2xl border-x border-slate-800/60"></div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import {
+      getFirestore, collection, doc, setDoc, getDocs, onSnapshot
+    } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCusF7yV1Kcycx78cIg_8D_9XzX50Tha3Q",
+      authDomain: "porra-laliga-26771.firebaseapp.com",
+      projectId: "porra-laliga-26771",
+      storageBucket: "porra-laliga-26771.firebasestorage.app",
+      messagingSenderId: "471237266974",
+      appId: "1:471237266974:web:fe218de9ac5c9f5b3c680f"
+    };
+
+    const fbApp = initializeApp(firebaseConfig);
+    const db = getFirestore(fbApp);
+
+    const FALLBACK_MATCHES = [
+      { id: "m1", jornada: 15, home: "Real Madrid", away: "Getafe", date: "2026-12-05T16:15:00Z", status: "FINISHED", homeGoals: 2, awayGoals: 0 },
+      { id: "m2", jornada: 15, home: "Barcelona", away: "Betis", date: "2026-12-05T18:30:00Z", status: "FINISHED", homeGoals: 3, awayGoals: 1 },
+      { id: "m3", jornada: 15, home: "At. Madrid", away: "Sevilla", date: "2026-12-05T21:00:00Z", status: "IN_PLAY", homeGoals: 1, awayGoals: 1 },
+      { id: "m4", jornada: 15, home: "Valencia", away: "Athletic", date: "2026-12-06T14:00:00Z", status: "SCHEDULED", homeGoals: null, awayGoals: null },
+      { id: "m5", jornada: 15, home: "R. Sociedad", away: "Villarreal", date: "2026-12-06T16:15:00Z", status: "SCHEDULED", homeGoals: null, awayGoals: null }
+    ];
+
+    const FALLBACK_PAST_ROUNDS = [
+      {
+        jornada: 14,
+        bonusAwarded: { "Carlos": 5, "Lucía": 0, "Mateo": 0 },
+        rows: [
+          { user: "Carlos", pts: 18, exactos: 3 },
+          { user: "Lucía", pts: 15, exactos: 2 },
+          { user: "Mateo", pts: 12, exactos: 1 }
+        ]
+      }
+    ];
+
+    const state = {
+      screen: "auth",
+      authMode: null,
+      currentUser: null,
+      activeTab: "next",
+      currentSubTab: "real",
+      users: [],
+      predictions: {},
+      matches: FALLBACK_MATCHES,
+      currentJornada: 15,
+      nextJornada: 16,
+      pastRounds: FALLBACK_PAST_ROUNDS,
+      liveModeStatus: "AUTO",
+      toast: ""
+    };
+
+    function showToast(msg) {
+      state.toast = msg;
+      render();
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => {
+        state.toast = "";
+        render();
+      }, 2600);
+    }
+
+    function getSign(h, a) {
+      if (h === null || a === null || h === "" || a === "" || isNaN(h) || isNaN(a)) return null;
+      const nh = Number(h), na = Number(a);
+      if (nh > na) return "1";
+      if (nh < na) return "2";
+      return "X";
+    }
+
+    function scoreMatch(predH, predA, realH, realA) {
+      if (
+        predH === null || predA === null || predH === "" || predA === "" ||
+        realH === null || realA === null || realH === "" || realA === ""
+      ) {
+        return { pts: 0, exact: false };
+      }
+      const ph = Number(predH), pa = Number(predA);
+      const rh = Number(realH), ra = Number(realA);
+      if (ph === rh && pa === ra) {
+        return { pts: 4, exact: true };
+      }
+      const pSign = getSign(ph, pa);
+      const rSign = getSign(rh, ra);
+      if (pSign && pSign === rSign) {
+        const diffBonus = ((ph - pa) === (rh - ra)) ? 1 : 0;
+        return { pts: 2 + diffBonus, exact: false };
+      }
+      return { pts: 0, exact: false };
+    }
+
+    function isRoundLocked(roundMatches) {
+      if (state.liveModeStatus === "LOCKED") return true;
+      if (state.liveModeStatus === "OPEN") return false;
+      return roundMatches.some(m => m.status === "IN_PLAY" || m.status === "PAUSED" || m.status === "FINISHED");
+    }
+
+    function computeCurrentJornadaStandings() {
+      const jornadaMatches = state.matches.filter(m => m.jornada === state.currentJornada);
+      const base = state.users.map(u => {
+        let pts = 0;
+        let exactos = 0;
+        jornadaMatches.forEach(m => {
+          const p = state.predictions[`${u.name}_${m.id}`];
+          if (p) {
+            const res = scoreMatch(p.h, p.a, m.homeGoals, m.awayGoals);
+            pts += res.pts;
+            if (res.exact) exactos += 1;
+          }
+        });
+        return { user: u.name, pts, exactos, bonus: 0, isWinner: false, isTiedBonus: false };
+      });
+
+      base.sort((a, b) => (b.pts - a.pts) || (b.exactos - a.exactos) || a.user.localeCompare(b.user));
+
+      if (base.length > 0 && base[0].pts > 0) {
+        const topPts = base[0].pts;
+        const topExact = base[0].exactos;
+        const exactTied = base.filter(x => x.pts === topPts && x.exactos === topExact);
+        if (exactTied.length === 1) {
+          base[0].bonus = 5;
+          base[0].isWinner
