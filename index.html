@@ -18,7 +18,7 @@
   </style>
 </head>
 <body class="min-h-screen flex flex-col items-center overflow-x-hidden">
-  <div id="app" class="w-full max-w-md min-h-screen bg-slate-950 flex flex-col overflow-x-hidden shadow-2xl border-x border-slate-800/60"></div>
+  <div id="app" class="w-full max-w-md min-h-screen bg-[#0c1322] flex flex-col overflow-x-hidden shadow-2xl border-x border-slate-800/60"></div>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -67,7 +67,7 @@
       screen: "auth",
       authMode: null,
       currentUser: null,
-      activeTab: "next",
+      activeTab: "menu",
       currentSubTab: "real",
       users: [],
       predictions: {},
@@ -185,6 +185,19 @@
       return list;
     }
 
+    function getNextRoundMatches() {
+      const roundMatches = state.matches.filter(m => m.jornada === state.nextJornada);
+      if (roundMatches.length > 0) return roundMatches;
+      return FALLBACK_MATCHES.map((m, idx) => ({
+        ...m,
+        id: `next_${idx}`,
+        jornada: state.nextJornada,
+        status: "SCHEDULED",
+        homeGoals: null,
+        awayGoals: null
+      }));
+    }
+
     async function loadMatchesFromApi() {
       try {
         const res = await fetch("/api/laliga");
@@ -271,7 +284,7 @@
 
       state.currentUser = cleanName;
       state.screen = "home";
-      state.activeTab = "next";
+      state.activeTab = "menu";
       showToast(`¡Bienvenido ${cleanName}! Empiezas con ${lastPlacePoints} pts`);
     }
 
@@ -303,7 +316,7 @@
 
       state.currentUser = found.name;
       state.screen = "home";
-      state.activeTab = "next";
+      state.activeTab = "menu";
       showToast(`Sesión iniciada como ${found.name}`);
     }
 
@@ -398,49 +411,61 @@
       const general = computeGeneralStandings();
       const myRankIndex = general.findIndex(u => u.name === state.currentUser);
       const myData = myRankIndex >= 0 ? general[myRankIndex] : { pts: 0, wins: 0, exactos: 0 };
+      const rankLabel = myRankIndex >= 0 ? `#${myRankIndex + 1}` : "#1";
 
-      const menuItems = [
-        { id: "next", label: "⚽ Pronósticos próxima jornada" },
-        { id: "standings", label: "🏆 Clasificación" },
-        { id: "current", label: "📌 Jornada actual" },
-        { id: "history", label: "📜 Jornadas anteriores" },
-        { id: "rules", label: "📖 Reglas del Juego" }
-      ];
+      const subtitleMap = {
+        menu: "Menú Principal",
+        next: "Pronósticos próxima jornada",
+        standings: "Clasificación",
+        current: "Jornada actual",
+        history: "Jornadas anteriores",
+        rules: "Reglas del Juego"
+      };
 
       return `
-        <header class="sticky top-0 z-20 bg-slate-950/95 backdrop-blur border-b border-slate-800 px-3.5 py-3">
+        <header class="sticky top-0 z-20 bg-[#0b1120]/95 backdrop-blur border-b border-slate-800/80 px-3.5 py-3">
           <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-xs text-emerald-400 font-semibold truncate">Hola, ${state.currentUser}</div>
-              <div class="text-sm font-extrabold text-white truncate">
-                ${myData.pts} pts · ${myRankIndex >= 0 ? `#${myRankIndex + 1}` : "-"}
+            <div class="flex items-center gap-2.5 min-w-0">
+              <div class="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center text-lg shrink-0 shadow-md shadow-emerald-950/60">
+                ⚽
+              </div>
+              <div class="min-w-0">
+                <div class="text-sm font-black tracking-wide text-white leading-tight truncate">PORRA LALIGA</div>
+                <div class="text-[11px] text-slate-400 leading-tight truncate">${subtitleMap[state.activeTab] || "Menú Principal"}</div>
               </div>
             </div>
-            <button id="btn-logout" class="shrink-0 text-xs px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
-              Salir
-            </button>
+
+            <div class="flex items-center gap-1.5 shrink-0">
+              <div class="bg-[#151e32] border border-slate-700/80 rounded-xl px-2.5 py-1 text-right">
+                <div class="text-xs font-bold text-white leading-tight truncate max-w-[92px]">${state.currentUser}</div>
+                <div class="text-[10px] font-bold text-amber-400 leading-tight">${myData.pts} pts · ${rankLabel}</div>
+              </div>
+              <button id="btn-logout" title="Cerrar sesión" class="w-9 h-9 rounded-xl bg-[#151e32] hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-300">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" />
+                </svg>
+              </button>
+            </div>
           </div>
 
-          <nav class="mt-2.5 flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-            ${menuItems.map(item => `
-              <button data-tab="${item.id}" class="tab-btn shrink-0 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition ${
-                state.activeTab === item.id
-                  ? "bg-emerald-500 text-slate-950"
-                  : "bg-slate-900 text-slate-300 border border-slate-800"
-              }">
-                ${item.label}
+          ${state.activeTab !== "menu" ? `
+            <div class="mt-2.5 pt-2 border-t border-slate-800/70">
+              <button data-tab="menu" class="tab-btn inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300">
+                <span>←</span>
+                <span>Volver al Menú Principal</span>
               </button>
-            `).join("")}
-          </nav>
+            </div>
+          ` : ""}
         </header>
 
         <main class="flex-1 p-3.5 space-y-3 overflow-x-hidden">
-          ${renderActiveTabContent(general)}
+          ${renderActiveTabContent(general, myData, rankLabel)}
         </main>
       `;
     }
 
-    function renderActiveTabContent(general) {
+    function renderActiveTabContent(general, myData, rankLabel) {
+      if (state.activeTab === "menu") return renderMainMenuTab(myData, rankLabel);
       if (state.activeTab === "next") return renderNextJornadaTab();
       if (state.activeTab === "standings") return renderGeneralStandingsTab(general);
       if (state.activeTab === "current") return renderCurrentJornadaTab();
@@ -448,23 +473,122 @@
       return renderRulesTab();
     }
 
-    function renderNextJornadaTab() {
-      let roundMatches = state.matches.filter(m => m.jornada === state.nextJornada);
-      if (roundMatches.length === 0) {
-        roundMatches = FALLBACK_MATCHES.map((m, idx) => ({
-          ...m,
-          id: `next_${idx}`,
-          jornada: state.nextJornada,
-          status: "SCHEDULED",
-          homeGoals: null,
-          awayGoals: null
-        }));
-      }
+    function renderMainMenuTab(myData, rankLabel) {
+      const nextMatches = getNextRoundMatches();
+      const totalNext = nextMatches.length;
+      const doneNext = nextMatches.filter(m => {
+        const p = state.predictions[`${state.currentUser}_${m.id}`];
+        return p && p.h !== null && p.h !== "" && p.a !== null && p.a !== "";
+      }).length;
+      const allDone = totalNext > 0 && doneNext === totalNext;
 
+      return `
+        <div class="relative overflow-hidden rounded-2xl bg-[#162035] border border-slate-700/70 p-4 shadow-lg">
+          <div class="absolute left-0 top-0 bottom-0 w-1 bg-emerald-400"></div>
+          <div class="text-[10px] font-extrabold tracking-wider uppercase text-emerald-400">PANEL DE JUGADOR</div>
+          <h2 class="text-xl font-extrabold text-white mt-0.5">
+            ¡Hola, <span class="text-emerald-400">${state.currentUser}</span>!
+          </h2>
+          <p class="text-xs text-slate-300 mt-1">
+            La <b class="text-white">Jornada ${state.nextJornada}</b> está lista para tus pronósticos.
+          </p>
+
+          <div class="mt-3.5 grid grid-cols-3 divide-x divide-slate-800 rounded-xl bg-[#0c1322] border border-slate-800/90 py-2.5 text-center">
+            <div>
+              <div class="text-lg font-extrabold text-amber-400 leading-tight">${myData.pts}</div>
+              <div class="text-[10px] font-semibold tracking-wider text-slate-400 mt-0.5">PTS</div>
+            </div>
+            <div>
+              <div class="text-lg font-extrabold text-emerald-400 leading-tight">${rankLabel}</div>
+              <div class="text-[10px] font-semibold tracking-wider text-slate-400 mt-0.5">POSICIÓN</div>
+            </div>
+            <div>
+              <div class="text-lg font-extrabold text-white leading-tight">${myData.exactos}</div>
+              <div class="text-[10px] font-semibold tracking-wider text-slate-400 mt-0.5">EXACTOS</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+          <button data-tab="next" class="tab-btn w-full text-left rounded-2xl bg-[#10262b] hover:bg-[#132e34] border border-emerald-500/40 p-3.5 flex items-start gap-3 transition active:scale-[0.99]">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-lg shrink-0 mt-0.5">
+              ⚽
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-sm font-bold text-white truncate">Pronósticos próxima jornada</span>
+                <span class="shrink-0 text-[11px] font-extrabold px-2 py-0.5 rounded-md ${
+                  allDone ? "bg-emerald-400 text-slate-950" : "bg-slate-800 text-emerald-300 border border-emerald-500/30"
+                }">
+                  ${allDone ? "✅ " : ""}${doneNext}/${totalNext}
+                </span>
+              </div>
+              <p class="text-xs text-slate-300 mt-1 leading-snug">
+                Envía o edita tus marcadores de la Jornada ${state.nextJornada} antes del primer partido.
+              </p>
+            </div>
+          </button>
+
+          <button data-tab="standings" class="tab-btn w-full text-left rounded-2xl bg-[#151e32] hover:bg-[#1a253d] border border-slate-700/70 p-3.5 flex items-start gap-3 transition active:scale-[0.99]">
+            <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-lg shrink-0 mt-0.5">
+              🏆
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-bold text-white">Clasificación</div>
+              <p class="text-xs text-slate-400 mt-1 leading-snug">
+                Tabla general por Pts, Jornadas ganadas y Resultados exactos.
+              </p>
+            </div>
+          </button>
+
+          <button data-tab="current" class="tab-btn w-full text-left rounded-2xl bg-[#151e32] hover:bg-[#1a253d] border border-slate-700/70 p-3.5 flex items-start gap-3 transition active:scale-[0.99]">
+            <div class="w-10 h-10 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-lg shrink-0 mt-0.5">
+              📌
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm font-bold text-white">Jornada actual</span>
+                <span class="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1 leading-snug">
+                Jornada real, clasificación de la jornada y resultados de cada usuario.
+              </p>
+            </div>
+          </button>
+
+          <button data-tab="history" class="tab-btn w-full text-left rounded-2xl bg-[#151e32] hover:bg-[#1a253d] border border-slate-700/70 p-3.5 flex items-start gap-3 transition active:scale-[0.99]">
+            <div class="w-10 h-10 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-lg shrink-0 mt-0.5">
+              📜
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-bold text-white">Jornadas anteriores</div>
+              <p class="text-xs text-slate-400 mt-1 leading-snug">
+                Histórico de jornadas finalizadas, ganadores y puntuaciones.
+              </p>
+            </div>
+          </button>
+
+          <button data-tab="rules" class="tab-btn w-full text-left rounded-2xl bg-[#151e32] hover:bg-[#1a253d] border border-slate-700/70 p-3.5 flex items-start gap-3 transition active:scale-[0.99]">
+            <div class="w-10 h-10 rounded-xl bg-slate-500/15 border border-slate-500/30 flex items-center justify-center text-lg shrink-0 mt-0.5">
+              📖
+            </div>
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-bold text-white">Reglas del Juego</div>
+              <p class="text-xs text-slate-400 mt-1 leading-snug">
+                Puntuación (4 / 2+1), bonos de jornada (+5 / +3) y desempates.
+              </p>
+            </div>
+          </button>
+        </div>
+      `;
+    }
+
+    function renderNextJornadaTab() {
+      const roundMatches = getNextRoundMatches();
       const locked = isRoundLocked(roundMatches);
 
       return `
-        <div class="flex items-center justify-between gap-2 bg-slate-900 border border-slate-800 rounded-xl p-3">
+        <div class="flex items-center justify-between gap-2 bg-[#151e32] border border-slate-700/70 rounded-xl p-3">
           <div>
             <h2 class="text-sm font-bold text-white">Jornada ${state.nextJornada}</h2>
             <p class="text-[11px] ${locked ? "text-amber-400" : "text-emerald-400"}">
@@ -482,15 +606,15 @@
           ${roundMatches.map(m => {
             const myPred = state.predictions[`${state.currentUser}_${m.id}`] || { h: "", a: "" };
             return `
-              <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+              <div class="bg-[#151e32] border border-slate-700/70 rounded-xl p-3 space-y-2">
                 <div class="flex items-center justify-between gap-2">
                   <span class="text-xs font-semibold text-white truncate flex-1">${m.home}</span>
                   <div class="flex items-center gap-1.5 shrink-0">
                     <input id="pred-h-${m.id}" type="number" min="0" max="20" value="${myPred.h ?? ""}" ${locked ? "disabled" : ""}
-                      class="w-10 h-8 text-center text-sm font-bold rounded-lg bg-slate-950 border border-slate-700 text-white disabled:opacity-60" />
+                      class="w-10 h-8 text-center text-sm font-bold rounded-lg bg-[#0c1322] border border-slate-700 text-white disabled:opacity-60" />
                     <span class="text-xs text-slate-500">-</span>
                     <input id="pred-a-${m.id}" type="number" min="0" max="20" value="${myPred.a ?? ""}" ${locked ? "disabled" : ""}
-                      class="w-10 h-8 text-center text-sm font-bold rounded-lg bg-slate-950 border border-slate-700 text-white disabled:opacity-60" />
+                      class="w-10 h-8 text-center text-sm font-bold rounded-lg bg-[#0c1322] border border-slate-700 text-white disabled:opacity-60" />
                   </div>
                   <span class="text-xs font-semibold text-white truncate flex-1 text-right">${m.away}</span>
                 </div>
@@ -519,14 +643,14 @@
 
     function renderGeneralStandingsTab(general) {
       return `
-        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <div class="bg-[#151e32] border border-slate-700/70 rounded-xl overflow-hidden">
           <div class="px-3 py-2.5 border-b border-slate-800">
             <h2 class="text-sm font-bold text-white">Clasificación General</h2>
           </div>
 
           <table class="w-full table-fixed text-left border-collapse">
             <thead>
-              <tr class="bg-slate-950 text-[11px] text-slate-400 border-b border-slate-800">
+              <tr class="bg-[#0c1322] text-[11px] text-slate-400 border-b border-slate-800">
                 <th class="py-2 pl-2.5 pr-1 w-[38%]">Jugador</th>
                 <th class="py-2 px-1 text-center w-[20%]">Pts</th>
                 <th class="py-2 px-1 text-center w-[21%]">J. Gan.</th>
@@ -558,7 +682,7 @@
       ];
 
       return `
-        <div class="grid grid-cols-3 gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800">
+        <div class="grid grid-cols-3 gap-1.5 bg-[#151e32] p-1 rounded-xl border border-slate-700/70">
           ${subTabs.map(st => `
             <button data-subtab="${st.id}" class="subtab-btn py-2 px-1.5 rounded-lg text-[11px] font-bold truncate transition ${
               state.currentSubTab === st.id
@@ -587,7 +711,7 @@
             const earned = p ? scoreMatch(p.h, p.a, m.homeGoals, m.awayGoals).pts : 0;
             const scoreText = (m.homeGoals !== null && m.awayGoals !== null) ? `${m.homeGoals} - ${m.awayGoals}` : "vs";
             return `
-              <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2">
+              <div class="bg-[#151e32] border border-slate-700/70 rounded-xl p-3 flex items-center justify-between gap-2">
                 <div class="min-w-0 flex-1">
                   <div class="text-xs font-bold text-white truncate">${m.home} - ${m.away}</div>
                   <div class="text-[11px] text-slate-400 mt-0.5">
@@ -595,7 +719,7 @@
                   </div>
                 </div>
                 <div class="shrink-0 text-right">
-                  <div class="text-sm font-extrabold text-white bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                  <div class="text-sm font-extrabold text-white bg-[#0c1322] px-2.5 py-1 rounded-lg border border-slate-800">
                     ${scoreText}
                   </div>
                   <div class="text-[11px] text-emerald-400 font-semibold mt-0.5">+${earned} pts</div>
@@ -610,13 +734,13 @@
     function renderJornadaStandingsSubTab() {
       const rows = computeCurrentJornadaStandings();
       return `
-        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <div class="bg-[#151e32] border border-slate-700/70 rounded-xl overflow-hidden">
           <div class="px-3 py-2.5 border-b border-slate-800">
             <h3 class="text-sm font-bold text-white">Clasificación Jornada ${state.currentJornada}</h3>
           </div>
           <table class="w-full table-fixed text-left border-collapse">
             <thead>
-              <tr class="bg-slate-950 text-[11px] text-slate-400 border-b border-slate-800">
+              <tr class="bg-[#0c1322] text-[11px] text-slate-400 border-b border-slate-800">
                 <th class="py-2 pl-2.5 pr-1 w-[46%]">Jugador</th>
                 <th class="py-2 px-1 text-center w-[27%]">Pts J.</th>
                 <th class="py-2 pl-1 pr-2.5 text-center w-[27%]">Exactos J.</th>
@@ -624,7 +748,7 @@
             </thead>
             <tbody class="divide-y divide-slate-800/70 text-xs">
               ${rows.map((r, idx) => `
-                <tr class="${r.name === state.currentUser ? "bg-emerald-950/30" : ""}">
+                <tr class="${r.user === state.currentUser ? "bg-emerald-950/30" : ""}">
                   <td class="py-2.5 pl-2.5 pr-1 font-semibold text-white truncate">
                     <span class="text-slate-400 mr-1">${idx + 1}.</span>${r.user}
                     ${r.isWinner ? `<span class="ml-1 text-[10px] text-amber-300 font-bold">+5</span>` : ""}
@@ -647,10 +771,10 @@
       return `
         <div class="space-y-2.5">
           ${list.map(m => `
-            <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 space-y-2">
+            <div class="bg-[#151e32] border border-slate-700/70 rounded-xl p-3 space-y-2">
               <div class="flex items-center justify-between text-xs font-bold text-white">
                 <span class="truncate">${m.home} vs ${m.away}</span>
-                <span class="shrink-0 ml-2 px-2 py-0.5 rounded bg-slate-950 text-emerald-400">
+                <span class="shrink-0 ml-2 px-2 py-0.5 rounded bg-[#0c1322] text-emerald-400">
                   ${(m.homeGoals !== null && m.awayGoals !== null) ? `${m.homeGoals}-${m.awayGoals}` : "Pendiente"}
                 </span>
               </div>
@@ -660,7 +784,7 @@
                   const hasPred = p && p.h !== null && p.a !== null;
                   const pts = hasPred ? scoreMatch(p.h, p.a, m.homeGoals, m.awayGoals).pts : 0;
                   return `
-                    <div class="flex items-center justify-between text-[11px] bg-slate-950/90 border border-slate-800/80 rounded-lg px-2 py-1.5">
+                    <div class="flex items-center justify-between text-[11px] bg-[#0c1322]/90 border border-slate-800/80 rounded-lg px-2 py-1.5">
                       <span class="text-slate-200 truncate">${u.name}: <b>${hasPred ? `${p.h}-${p.a}` : "-"}</b></span>
                       <span class="text-emerald-400 font-bold ml-1 shrink-0">+${pts}</span>
                     </div>
@@ -677,14 +801,14 @@
       return `
         <div class="space-y-3">
           ${state.pastRounds.map(pr => `
-            <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <div class="bg-[#151e32] border border-slate-700/70 rounded-xl overflow-hidden">
               <div class="px-3 py-2.5 border-b border-slate-800 flex items-center justify-between">
                 <h3 class="text-sm font-bold text-white">Jornada ${pr.jornada}</h3>
                 <span class="text-[11px] text-amber-300 font-semibold">Bonificación aplicada</span>
               </div>
               <table class="w-full table-fixed text-left border-collapse">
                 <thead>
-                  <tr class="bg-slate-950 text-[11px] text-slate-400 border-b border-slate-800">
+                  <tr class="bg-[#0c1322] text-[11px] text-slate-400 border-b border-slate-800">
                     <th class="py-2 pl-2.5 pr-1 w-[46%]">Jugador</th>
                     <th class="py-2 px-1 text-center w-[27%]">Pts J.</th>
                     <th class="py-2 pl-1 pr-2.5 text-center w-[27%]">Exactos J.</th>
@@ -710,7 +834,7 @@
 
     function renderRulesTab() {
       return `
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-3 text-xs text-slate-200 leading-relaxed">
+        <div class="bg-[#151e32] border border-slate-700/70 rounded-xl p-3.5 space-y-3 text-xs text-slate-200 leading-relaxed">
           <h2 class="text-sm font-bold text-white">Reglas del Juego</h2>
           <div class="space-y-1.5">
             <div class="font-bold text-emerald-400">1. Puntuación por partido</div>
@@ -774,6 +898,7 @@
         logoutBtn.onclick = () => {
           state.currentUser = null;
           state.authMode = null;
+          state.activeTab = "menu";
           state.screen = "auth";
           render();
         };
@@ -796,8 +921,7 @@
       const savePredsBtn = document.getElementById("btn-save-preds");
       if (savePredsBtn) {
         savePredsBtn.onclick = () => {
-          const roundMatches = state.matches.filter(m => m.jornada === state.nextJornada);
-          savePredictions(roundMatches.length ? roundMatches : FALLBACK_MATCHES);
+          savePredictions(getNextRoundMatches());
         };
       }
     }
@@ -808,4 +932,3 @@
   </script>
 </body>
 </html>
-        
