@@ -327,24 +327,46 @@
         return;
       }
 
+      let savedCount = 0;
+
       for (const m of roundMatches) {
         const hEl = document.getElementById(`pred-h-${m.id}`);
         const aEl = document.getElementById(`pred-a-${m.id}`);
         if (!hEl || !aEl) continue;
-        const hVal = hEl.value === "" ? null : Number(hEl.value);
-        const aVal = aEl.value === "" ? null : Number(aEl.value);
-        if (hVal !== null && aVal !== null) {
-          const key = `${state.currentUser}_${m.id}`;
-          const payload = { user: state.currentUser, matchId: m.id, h: hVal, a: aVal };
-          state.predictions[key] = payload;
-          if (db) {
-            try {
-              await setDoc(doc(db, "predictions", key), payload);
-            } catch (_) {}
+
+        const rawH = hEl.value.trim();
+        const rawA = aEl.value.trim();
+        if (rawH === "" || rawA === "") continue;
+
+        const hVal = Number(rawH);
+        const aVal = Number(rawA);
+        if (Number.isNaN(hVal) || Number.isNaN(aVal)) continue;
+
+        const key = `${state.currentUser}_${m.id}`;
+        const payload = {
+          user: state.currentUser,
+          matchId: m.id,
+          h: hVal,
+          a: aVal
+        };
+
+        state.predictions[key] = payload;
+        savedCount += 1;
+
+        if (db) {
+          try {
+            await setDoc(doc(db, "predictions", key), payload);
+          } catch (err) {
+            console.error("Error guardando pronóstico:", key, err);
           }
         }
       }
-      showToast("Pronósticos guardados");
+
+      if (savedCount === 0) {
+        showToast("Rellena ambos marcadores en al menos un partido");
+      } else {
+        showToast(`Guardados ${savedCount} pronóstico(s)`);
+      }
     }
 
     function renderAuthScreen() {
