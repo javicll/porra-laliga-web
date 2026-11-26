@@ -23,7 +23,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import {
-      getFirestore, collection, doc, setDoc, getDocs, onSnapshot
+      initializeFirestore, collection, doc, setDoc, getDocs, onSnapshot, writeBatch
     } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
     const firebaseConfig = {
@@ -38,7 +38,7 @@
     let db = null;
     try {
       const fbApp = initializeApp(firebaseConfig);
-      db = getFirestore(fbApp);
+      db = initializeFirestore(fbApp, { experimentalForceLongPolling: true });
     } catch (err) {
       console.error("Error iniciando Firebase:", err);
     }
@@ -327,8 +327,7 @@
         return;
       }
 
-      let savedCount = 0;
-
+      const toSave = [];
       for (const m of roundMatches) {
         const hEl = document.getElementById(`pred-h-${m.id}`);
         const aEl = document.getElementById(`pred-a-${m.id}`);
@@ -349,23 +348,32 @@
           h: hVal,
           a: aVal
         };
-
-        state.predictions[key] = payload;
-        savedCount += 1;
-
-        if (db) {
-          try {
-            await setDoc(doc(db, "predictions", key), payload);
-          } catch (err) {
-            console.error("Error guardando pronóstico:", key, err);
-          }
-        }
+        toSave.push({ key, payload });
       }
 
-      if (savedCount === 0) {
+      if (toSave.length === 0) {
         showToast("Rellena ambos marcadores en al menos un partido");
+        return;
+      }
+
+      if (db) {
+        try {
+          const batch = writeBatch(db);
+          for (const item of toSave) {
+            state.predictions[item.key] = item.payload;
+            batch.set(doc(db, "predictions", item.key), item.payload);
+          }
+          await batch.commit();
+          showToast(`¡Guardados ${toSave.length} pronósticos a la vez!`);
+        } catch (err) {
+          console.error("Error en batch:", err);
+          showToast("Error al guardar en la nube. Revisa tu conexión");
+        }
       } else {
-        showToast(`Guardados ${savedCount} pronóstico(s)`);
+        for (const item of toSave) {
+          state.predictions[item.key] = item.payload;
+        }
+        showToast(`Guardados ${toSave.length} pronósticos en local`);
       }
     }
 
